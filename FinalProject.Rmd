@@ -1,0 +1,159 @@
+
+
+Training dataset:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Testing dataset:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+ Load all the librarys necesary to run the project.
+
+```{r}
+library(caret)
+library(ggplot2)
+library(corrplot)
+library(randomForest)
+```
+
+ assing the data from pml-training.csv and pml-testing.csv files to the variables.
+
+
+```{r}
+setwd("C:/Users/nicolas/Downloads")
+
+training <- read.csv("pml-training.csv",na.strings = c("NA", ""))
+
+test <- read.csv("pml-testing.csv",na.strings = c("NA", ""))
+```
+
+ We search in the variables those columns that dont contibute to the analysis 
+ because they are character or non-numerical.
+
+```{r}
+sapply(test,class)
+```
+
+
+ Using What we saw in the previous part we should remove some of the columns that not make sence to have with the girp function, because thay are not numeric. and create a new vector from this operation.
+ 
+```{r}
+training_aux <- training[, -(grep("timestamp|X|user_name|num_window|new_window", names(training)))]
+test_aux <- test[, -(grep("timestamp|X|user_name|num_window|new_window", names(test)))]
+```
+ 
+ 
+Many of the columns we load have . NA`s values. We take out  from the variables those data with NA's values
+The NA`s records make our machine learning algorithm less precise. Finally we update the vector with out any NA`s values.
+```{r}
+NAs <- apply(training_aux, 2, function(x) {
+    sum(is.na(x))})
+
+training_aux <- training_aux[, which(NAs == 0)]
+test_aux <- test_aux[, which(NAs == 0)]
+```
+
+
+ We split the data into two variables. First the training data with the 60 % and the test data with 40%. 
+
+```{r}
+training.idx <- training_aux[createDataPartition(y = training_aux$classe, p = 0.6, list = FALSE), ]  
+test.idx <- training_aux[-createDataPartition(y = training_aux$classe, p = 0.6, list = FALSE), ]  
+
+```
+
+
+We take a look how our variables shrink, with out the NA`s values.
+
+```{r}
+
+
+dim(training.idx)
+
+
+head(training.idx)
+
+
+
+```
+
+ this graph is usefull to look at the correlation with some variables to each others. Note that the dark blue indicated strong correlation and red negative correlation. Our dataset is 11776 X 53 and one of those is Classe, the variable we want to predict.
+ This graph shows us nice information to implement a Random Forest Study.
+
+```{r}
+
+Graph <- training.idx
+
+NAs <- apply(training.idx, 2, function(x) {
+    sum(is.na(x))
+})
+Graph<- training.idx[, which(NAs == 0)]
+
+
+
+CorrePlot = cor( Graph[,-c(grep("timestamp|X|user_name|num_window|new_window",names(Graph)), length(Graph))])
+corrplot(CorrePlot, method="circle",tl.cex=0.9)
+
+```
+
+At this point we create our model using Random Forest and the set of data originally given but reduced.
+We train our model over the dataset using the "boot" method inside trainControl.
+
+```{r}
+set.seed(4242)
+
+MyModel.Forest<- train(training.idx$classe ~ ., data = training.idx, method = "rf", 
+    prof = TRUE, trControl = trainControl(method = "boot", number = 5, allowParallel = TRUE))
+
+summary(MyModel.Forest)
+
+MyModel.Forest
+
+MyModel.Forest.Final<- MyModel.Forest$results
+round(max(MyModel.Forest.Final$Accuracy), 3) * 100
+```
+
+We got a very nice result of the occuracy at the first attemp: 98.7 %. That`s ok.
+
+```{r}
+varImpPlot(MyModel.Forest$finalModel, 
+            main = "Principal Components with high importance")
+```
+
+## The cross validation study of our model.
+
+```{r}
+test.idx$predRight <- (predict(MyModel.Forest, test.idx))== test.idx$classe
+table(predict(MyModel.Forest, test.idx), test.idx$classe)
+CrossValidated<- postResample((predict(MyModel.Forest, test.idx)), test.idx$classe)
+CrossValidated
+
+```
+
+We got a nice high level of accuracy.
+
+# We try out with the ConfussionMatrix
+```{r}
+set.seed(4242)
+CrossValidatedError <- confusionMatrix((predict(MyModel.Forest, test.idx)), test.idx$classe)
+CrossValidatedError
+
+
+postResample((predict(MyModel.Forest, test.idx)), test.idx$classe)[[1]]
+
+1- postResample((predict(MyModel.Forest, test.idx)), test.idx$classe)[[1]]  
+
+```
+
+we can see that our calculus were very close with the result of the matrix. 
+The accurance is 99.6%
+
+# The 20 cases to predict
+
+
+```{r}
+Model.Prediction <- predict(MyModel.Forest, test)
+Model.Prediction
+
+
+```
